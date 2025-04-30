@@ -209,7 +209,6 @@ int xflag = 0;			/* extract files */
 int tflag = 0;			/* list files */
 int vflag = 0;			/* verbose mode */
 int bflag = 0;			/* extract binary file */
-int zflag = 0;			/* work from compressed disk image */
 int doubledisk = 0;		/* double disk system */
 
 main (int argc, char *argv[])
@@ -247,9 +246,6 @@ int i;
 	  break;
 	case 'b':
 	  bflag++;
-	  break;
-	case 'z':
-	  zflag++;
 	  break;
 	default:
 	  AssertOrDie (0, "Unknown flag %c\n", *flags);
@@ -307,26 +303,9 @@ ReadSingleDisk (char *name, struct PAGE *diskp)
   int totalbytes = 0;
   int total = NPAGES * sizeof (struct PAGE);
   char *dp = (char *) diskp;
-  /*
-   * We conclude the disk image is compressed if either the zflag is set or
-   * if the name ends with .Z
-   */
-  if (zflag || (strstr (name, ".Z") == (name + strlen (name) - 2)))
-    {
-      char *cmd;
-      cmd = malloc (strlen (name) + 10);
-      sprintf (cmd, "zcat %s", name);
-      infile = popen (cmd, "r");
-      AssertOrDie (infile != NULL,
-		   "popen failed on zcat %s\n", name);
-      free (cmd);
-    }
-  else
-    {
-      infile = fopen (name, "rb");
-      AssertOrDie (infile != NULL,
-		   "open failed on Alto disk image file %s\n", name);
-    }
+  infile = fopen (name, "rb");
+  AssertOrDie (infile != NULL,
+    "open failed on Alto disk image file %s\n", name);
   while (totalbytes < total)
     {
       bytes = fread (dp, sizeof (char), total - totalbytes, infile);

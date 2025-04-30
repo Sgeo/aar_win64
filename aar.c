@@ -929,7 +929,7 @@ void
 swabit (char *data, int count)
 {
   word junk, *d;
-  AssertOrDie (((count & 1) == 0) && (((long) data & 1) == 0),
+  AssertOrDie (((count & 1) == 0) && (((uintptr_t) data & 1) == 0),
 	       "swab called with unaligned values\n");
   count >>= 1;
   d = (word *) data;

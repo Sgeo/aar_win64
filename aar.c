@@ -756,12 +756,6 @@ extract_file (int leader_page_VDA)
   close (ofd);
 }
 
-
-int
-altotometotime (struct TIME at)
-{
-}
-
 int
 getword (struct FA *fa)
 {

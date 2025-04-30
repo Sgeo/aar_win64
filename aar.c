@@ -849,7 +849,7 @@ ValidateDiskDescriptor ()
   lp = pageLeader (ddlp);
   l = pageLabel (ddlp);
   fa.vda = RDAtoVDA (l->nextRDA);
-  bcopy (&disk[fa.vda].data[0], &kdh, sizeof (kdh));
+  memmove (&kdh, &disk[fa.vda].data[0], sizeof (kdh));
   bitTable = (word *) malloc (kdh.diskBTsize * sizeof (word));
   /* now copy the bit table from the disk into bitTable */
   fa.pageNumber = 1;

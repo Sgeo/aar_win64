@@ -203,25 +203,32 @@ pageLabel (int vda)
 }
 
 
-short int little = 1;		/* endian test */
+union endian {
+  short int e;
+  unsigned char l, h;
+};
+
+union endian little;		/* endian test */
+
 int lflag = 0;			/* dump leader pages */
 int xflag = 0;			/* extract files */
 int tflag = 0;			/* list files */
 int vflag = 0;			/* verbose mode */
 int bflag = 0;			/* extract binary file */
+int sflag = 0;			/* swab words on extract */
 int doubledisk = 0;		/* double disk system */
 
+int
 main (int argc, char *argv[])
 {
-  int got, totalgot;
-  FILE *infile;
-
-int i;
-
   /* process arguments */
   /* aar [xt][v] diskimage [file...] */
   /* new flag 'b' for binary, which applies to extract */
+  /* new flag 's' for swab on extract */
   char *flags;
+
+  /* initialize for endian test */
+  little.e = 1;
   if (argc < 3)
     {
       printf ("Usage: aar  [xt][v] diskimage [file...] \n");
@@ -247,6 +254,9 @@ int i;
 	case 'b':
 	  bflag++;
 	  break;
+	case 's':
+	  sflag++;
+	  break;
 	default:
 	  AssertOrDie (0, "Unknown flag %c\n", *flags);
 	  break;
@@ -255,7 +265,7 @@ int i;
     }
   AssertOrDie (!(tflag && xflag), "Illegal flag combination\n");
   ReadDiskFile (argv[2]);
-  if ((*(char *) &little) == 0)
+  if (little.l == 0)
     swabit ((char *) disk, sizeof (disk));
 
 /*  AssertOrDie (Verify_Headers (), "Disk Scrambled, header verify failed\n"); */
@@ -268,6 +278,7 @@ int i;
     table_files (argc, argv);
   if (xflag)
     extract_files (argc, argv);
+  return 0;
 }
 
 
@@ -292,7 +303,7 @@ ReadDiskFile (char *name)
   ReadSingleDisk (dp0name, &disk[0]);
   doubledisk = dp1name != NULL;
   if (doubledisk)
-    ReadSingleDisk (dp1name, &disk[4872]);
+    ReadSingleDisk (dp1name, &disk[NPAGES]);
 }
 
 void
@@ -334,9 +345,9 @@ dump_disk_block (int page)
 	{
 	  d = disk[page].data[(row * 8) + col];
 	  c = (d >> 8) & 0x7f;
-	  str[(col * 2)] = (isprint (c)) ? c : ' ';
+	  str[(col * 2)] = (isprint ((unsigned char)c)) ? c : ' ';
 	  c = (d) & 0x7f;
-	  str[(col * 2) + 1] = (isprint (c)) ? c : ' ';
+	  str[(col * 2) + 1] = (isprint ((unsigned char)c)) ? c : ' ';
 	}
       str[16] = 0;
       printf ("  %16s\n", str);
@@ -347,7 +358,7 @@ dump_disk_block (int page)
 void
 dump_leader_pages ()
 {
-  int i, j, bad, length, last;
+  int i, bad, length, last;
   char fn[42];
   struct LABEL *l;
   struct LEADER *lp;
@@ -408,8 +419,8 @@ print_alto_time (struct TIME t)
   time += 2117503696;		/* magic value to convert to Unix epoch */
   ltm = localtime (&time);
   /* like  4-Jun-80  17:14:36  */
-  printf ("%02d-%s-%02d  %2d:%02d:%02d", ltm->tm_mday, monthnames[ltm->tm_mon],
-	  ltm->tm_year, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+  printf ("%02d-%s-%04d  %2d:%02d:%02d", ltm->tm_mday, monthnames[ltm->tm_mon],
+	  1900 + ltm->tm_year, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
 }
 
 void
@@ -430,7 +441,7 @@ print_file_times (int leader_page_VDA)
 void
 dump_directory ()
 {
-  int i, w, length, j, valid;
+  int i, w, length, valid;
   struct LABEL *l;
   struct FA fa;
   struct DV *dv;
@@ -525,7 +536,6 @@ name_from_leader (struct LEADER *lp, char *fn)
 void
 table_file (int leader_page_VDA, struct DV *dv)
 {
-  struct LABEL *l;
   struct LEADER *lp;
   int length;
   char fn[42];
@@ -627,7 +637,7 @@ int
 find_file (char *name)
 {
   /* search directory for file <name> and return leader page VDA */
-  int i, j, bad, length, last;
+  int i, length, last;
   char fn[42], *s;
   struct LABEL *l;
   struct LEADER *lp;
@@ -703,7 +713,7 @@ void
 void
 extract_file (int leader_page_VDA)
 {
-  int j, length;
+  int length;
   int ofd;
   char fn[42];
   struct LABEL *l;
@@ -729,7 +739,16 @@ extract_file (int leader_page_VDA)
       filepage = RDAtoVDA (l->nextRDA);
 
       l = pageLabel (filepage);
-      bytes = write (ofd, (char*)&disk[filepage].data[0], l->nbytes);
+      if (sflag) {
+        char data[256 * 2];
+        char *src = (char *)&disk[filepage].data;
+        int i;
+        for (i = 0; i < 256 * 2; i++)
+           data[i] = src[i ^ 1];
+        bytes = write (ofd, data, l->nbytes);
+      } else {
+        bytes = write (ofd, (char*)&disk[filepage].data[0], l->nbytes);
+      }
       AssertOrDie (bytes == l->nbytes, "write to %s failed!\n", &fn[1]);
     }
   close (ofd);
@@ -837,7 +856,7 @@ ValidateDiskDescriptor ()
    * check numdisks
    *
    */
-  int ddlp, i, page, bit, free, ok, last;
+  int ddlp, i, page, free, ok, last;
   struct LEADER *lp;
   struct LABEL *l;
   struct FA fa;
@@ -948,12 +967,12 @@ copystring (char *to, char *from, int length, int lower)
   char c;
   for (i = 0; i < length; i += 1)
     {
-      if (*(char *) &little)
+      if (little.l)
 	c = from[i ^ 1];
       else
 	c = from[i];
       if (lower)
-	c = tolower (c);
+	c = tolower ((unsigned char)c);
       to[i] = c;
     }
 }
